@@ -1,0 +1,144 @@
+---
+title: "Meta-Analysis Demo"
+author: "Psych 251/201a (V. Boyce, adapted by Bria Long"
+date: "11/3/2021"
+output: html_document
+---
+
+# Preliminaries
+
+Packages needed for the class example. 
+
+```{r packages}
+library(tidyverse)
+library(metafor)
+library(here)
+theme_set(theme_bw())
+```
+
+You'd need to run this next chunk if you wanted to re-download the data from MetaLab, which would also mean installing the `metalabr` package (commented out). 
+
+```{r data, eval=FALSE}
+# devtools::install_github("langcog/metalabr")
+# library(metalabr)
+# metadata <- get_metalab_metadata()
+# metalab_data <- get_metalab_data(filter(metadata, short_name == "mutex"))
+# metalab_data %>% 
+  # select(long_cite, short_cite, expt_num, n, d_calc, d_var_calc, 
+         # mean_age_months, year) %>%
+  # filter(mean_age_months <= 24) %>% # subset for ease
+# write_csv(here("data/mutex.csv"))
+```
+
+Load in the pre-cached data. 
+
+```{r dataloading}
+d <- read_csv(here("data/mutex.csv"))
+```
+
+# Basic descriptives
+
+Always take a look at the data first.
+
+```{r examine}
+d
+```
+
+The effect sizes are in `d_calc` (for Cohen's $d$, calculated from the data). 
+
+```{r hist}
+ggplot(d, aes(x = d_calc)) + 
+  geom_histogram(binwidth = .1) + 
+  xlab("Effect Size (d)")
+```
+
+Since these are developmental data, we can plot them against age. 
+
+```{r ageplot}
+ggplot(d, aes(x = mean_age_months, y = d_calc)) + 
+  geom_point(aes(size = n), alpha = .5) + 
+  geom_smooth(method = "lm") + 
+  xlab("Mean age (months)") + 
+  ylab("Effect size (d)") + 
+  scale_size_area()+
+  geom_hline(lty = 2, yintercept = 0)
+```
+
+# Meta-analysis
+
+Random effects meta-analysis - this is the default for `metafor`. The main command for metafor is `rma` - that's like the `lm` (linear model) or `lmer` (linear mixed effects model of the `lme4` package). 
+
+
+
+```{r ranef}
+random_effects_mod <- rma(yi = d_calc, vi = d_var_calc, 
+                          slab = short_cite, data = d)
+summary(random_effects_mod)
+```
+Investigate heterogeneity if we remove the outlier.
+
+```{r}
+d_post_hoc_pruned <- filter(d, d_calc < 2)
+random_effects_posthoc_mod <- rma(yi = d_calc, vi = d_var_calc, 
+                          slab = short_cite, data = d_post_hoc_pruned)
+summary(random_effects_posthoc_mod)
+```
+
+
+
+For kicks, try fixed effects. 
+
+```{r fixef}
+fixed_effects_mod <- rma(yi = d_calc, vi = d_var_calc, 
+                          slab = short_cite, data = d, method = "FE")
+summary(fixed_effects_mod)
+```
+
+# Forest plot
+
+`metafor` also lets you create forest plots. 
+
+```{r forest-ranef}
+forest(random_effects_mod)
+```
+
+Compare to the forest plot for the fixed effects model.
+
+```{r forest-fixef}
+forest(fixed_effects_mod)
+```
+
+# Funnel plot
+
+A funnel plot can be used to diagnose publication bias (though it's not the most sensitive way to do so).
+
+```{r funnel}
+funnel(random_effects_mod)
+```
+
+
+# Meta-regression
+
+Meta-regression asks whether study-level covariates (like say year of publication or average age of kids) are related to the effect size. 
+
+```{r metareg-age}
+meta_reg_model <- rma(yi = d_calc, vi = d_var_calc, 
+                      mods = ~ mean_age_months, 
+                      slab = short_cite, data = d)
+summary(meta_reg_model)
+```
+Try asking if publication `year` is a significant meta-regressor.
+
+```{r metareg-year}
+
+```
+
+# Tools for effect size wrangling
+
+metafor::escalc()
+
+many functions in compute.es package
+
+https://github.com/vboyce/251-254-MA/blob/main/code/helper/parse_stats.R (what V. Boyce wrote for replication meta-analysis)
+
+https://github.com/AaronChuey/online_devo_metaanalysis/blob/main/scripts/compute_es.R (from people doing prep for metalab datasets)
